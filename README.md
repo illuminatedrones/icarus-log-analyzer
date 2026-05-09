@@ -4,7 +4,7 @@ Browser-based analyzer for ArduPilot `.bin` logs from light-show drones. Parses 
 
 ## Live app
 
-→ **https://layorjunia.github.io/icarus-log-analyzer/**
+→ **https://illuminatedrones.github.io/icarus-log-analyzer/**
 
 Drop one or more `.bin` files on the upload area to begin.
 
