@@ -107,6 +107,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:1
   border-radius:8px;padding:9px 13px;display:flex;align-items:flex-start;gap:10px;}
 .finding.ok{border-left-color:var(--green);} .finding.warn{border-left-color:var(--accent);}
 .finding.crit{border-left-color:var(--red);} .finding.info{border-left-color:var(--blue);}
+.finding.crit.cascade{border-left-color:#7a3030;background:rgba(239,68,68,.04);opacity:.78;}
+.finding.crit.cascade .ft strong{color:#dcdcdc;font-weight:500;}
 .fi{font-size:13px;flex-shrink:0;margin-top:1px;}
 .ft{font-size:12px;line-height:1.6;color:#aaa;} .ft strong{color:var(--text);font-weight:600;}
 
@@ -244,7 +246,10 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:1
 @media(max-width:920px){.exp-body{grid-template-columns:1fr;}}
 .exp-list{border-right:1px solid var(--b1);padding:12px;overflow-y:auto;max-height:640px;display:flex;flex-direction:column;gap:8px;}
 .exp-charts{padding:12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:11px;align-content:start;}
-.exp-placeholder{display:flex;align-items:center;justify-content:center;min-height:180px;color:var(--dimmer);font-size:12px;grid-column:1/-1;}
+.exp-placeholder{padding:54px 24px;text-align:center;color:var(--dimmer);font-size:12px;line-height:1.85;grid-column:1/-1;}
+.exp-placeholder p{margin:6px 0;}
+.exp-placeholder strong{color:var(--accent);font-weight:700;}
+.exp-empty{padding:32px 18px;text-align:center;color:var(--dim);font-size:12.5px;line-height:1.7;}
 /* Explorer message cards */
 .ecard{background:var(--s2);border:1px solid var(--b1);border-radius:8px;padding:11px 13px;position:relative;}
 .ecard.hidden{display:none;}
@@ -568,7 +573,7 @@ function analyze(msgs,filename){
       r.findings.push({sev:'crit',icon:'🔋',text:`<strong>Critical battery voltage</strong> — ${cells}S pack minimum ${minV.toFixed(2)}V (${minVpc.toFixed(3)}V/cell). Inspect all cells for damage or deep discharge.`});}
     else if(minVpc<WARN_VPC){bStat='warn';bDesc=`${cells}S min ${minV.toFixed(2)}V — low`;
       r.findings.push({sev:'warn',icon:'🔋',text:`<strong>Low battery voltage</strong> — ${cells}S pack minimum ${minV.toFixed(2)}V (${minVpc.toFixed(3)}V/cell). Verify landing timing and battery condition.`});}
-    if(maxSag/cells>0.12)r.findings.push({sev:'warn',icon:'⚡',text:`<strong>Voltage sag detected</strong> — ${maxSag.toFixed(3)}V drop (${(maxSag/cells).toFixed(3)}V/cell) in &lt;5s at T+${sagAt.toFixed(1)}s. High current demand or weak cells.`});
+    if(maxSag/cells>0.12)r.findings.push({sev:'warn',t:sagAt,icon:'⚡',text:`<strong>Voltage sag detected</strong> — ${maxSag.toFixed(3)}V drop (${(maxSag/cells).toFixed(3)}V/cell) in &lt;5s at T+${sagAt.toFixed(1)}s. High current demand or weak cells.`});
     if(dur>30&&vD.length>10){
       const lastV=vD[vD.length-1].y,lastVpc=lastV/cells;
       const mA=msgs['MODE']||[],lastM=mA.length?mA[mA.length-1]:null;
@@ -577,7 +582,7 @@ function analyze(msgs,filename){
       const lastSlice=vD.slice(-10);
       const stable=lastSlice[lastSlice.length-1].y>lastSlice[0].y*0.97;
       if(lastVpc>WARN_VPC&&!wasLanding&&stable){
-        r.findings.push({sev:'crit',icon:'💥',text:`<strong>Possible battery ejection / sudden power loss</strong> — Log ended abruptly with ${lastV.toFixed(2)}V (${lastVpc.toFixed(2)}V/cell, ~${Math.round(lastVpc/4.2*100)}% charge) and no landing mode active.`});
+        r.findings.push({sev:'crit',t:vD[vD.length-1].x,icon:'💥',text:`<strong>Possible battery ejection / sudden power loss</strong> — Log ended abruptly at T+${vD[vD.length-1].x.toFixed(1)}s with ${lastV.toFixed(2)}V (${lastVpc.toFixed(2)}V/cell, ~${Math.round(lastVpc/4.2*100)}% charge) and no landing mode active.`});
       }
     }
   }
@@ -709,15 +714,15 @@ function analyze(msgs,filename){
   if(gpsA.length){
     // Show-killers: hard fix loss + severe RTK degradation
     if(longestLoss>2&&longestLossAt!=null)
-      r.findings.push({sev:'crit',icon:'📡',text:`<strong>GPS lost fix entirely</strong> — no 3D fix for ${longestLoss.toFixed(1)}s starting T+${longestLossAt.toFixed(1)}s. Drone was flying on dead-reckoning; the show position commands meant nothing during this window.`});
+      r.findings.push({sev:'crit',t:longestLossAt,icon:'📡',text:`<strong>GPS lost fix entirely</strong> — no 3D fix for ${longestLoss.toFixed(1)}s starting T+${longestLossAt.toFixed(1)}s. Drone was flying on dead-reckoning; the show position commands meant nothing during this window.`});
     if(rtkFixedPct<0.5&&totalGpsTime>10)
       r.findings.push({sev:'crit',icon:'📡',text:`<strong>RTK Fixed only ${(rtkFixedPct*100).toFixed(0)}% of flight</strong> — drone spent most of the show on degraded positioning. Pixel-precise placement was severely compromised. Check base-station link, antenna mounting, and RF environment at the show site.`});
     else if(rtkFixedPct<0.8&&totalGpsTime>10)
       r.findings.push({sev:'warn',icon:'📡',text:`<strong>RTK Fixed ${(rtkFixedPct*100).toFixed(0)}% of flight</strong> — intermittent fix loss likely caused visible position drift in the formation.`});
     if(longestDeg>10&&longestDegAt!=null)
-      r.findings.push({sev:'crit',icon:'📡',text:`<strong>RTK degraded continuously for ${longestDeg.toFixed(1)}s</strong> starting T+${longestDegAt.toFixed(1)}s — sustained loss of pixel-perfect positioning during the show window.`});
+      r.findings.push({sev:'crit',t:longestDegAt,icon:'📡',text:`<strong>RTK degraded continuously for ${longestDeg.toFixed(1)}s</strong> starting T+${longestDegAt.toFixed(1)}s — sustained loss of pixel-perfect positioning during the show window.`});
     else if(longestDeg>3&&longestDegAt!=null)
-      r.findings.push({sev:'warn',icon:'📡',text:`<strong>RTK degraded for ${longestDeg.toFixed(1)}s</strong> starting T+${longestDegAt.toFixed(1)}s.`});
+      r.findings.push({sev:'warn',t:longestDegAt,icon:'📡',text:`<strong>RTK degraded for ${longestDeg.toFixed(1)}s</strong> starting T+${longestDegAt.toFixed(1)}s.`});
     if(maxHAcc>2.0)
       r.findings.push({sev:'warn',icon:'🎯',text:`<strong>GPS accuracy spike</strong> — HAcc peaked at ${maxHAcc.toFixed(2)}m (ideal &lt;0.5m). Look for multipath at that timestamp (buildings, water, neighbouring drones).`});
     if(minSats<6&&minSats>0)
@@ -785,7 +790,7 @@ function analyze(msgs,filename){
     yStat=sev;
     yVal=`${spinPeakRate.toFixed(0)}°/s × ${longestSpin.toFixed(1)}s`;
     yDesc=longestSpin>5?'Uncontrolled spin':'Sustained yaw';
-    r.findings.push({sev,icon:'🌀',text:`<strong>Sustained yaw spin</strong> — drone rotated at ~${spinPeakRate.toFixed(0)}°/s averaged over ${longestSpin.toFixed(1)}s starting T+${spinAt.toFixed(1)}s. For a light show this is highly visible — drone left its commanded heading. Likely cause: prop strike, motor loss, yaw-PID divergence, or collision with a neighbor.`});
+    r.findings.push({sev,t:spinAt,icon:'🌀',text:`<strong>Sustained yaw spin</strong> — drone rotated at ~${spinPeakRate.toFixed(0)}°/s averaged over ${longestSpin.toFixed(1)}s starting T+${spinAt.toFixed(1)}s. For a light show this is highly visible — drone left its commanded heading. Likely cause: prop strike, motor loss, yaw-PID divergence, or collision with a neighbor.`});
     r.events.push({t:spinAt.toFixed(1),type:'Yaw Spin',sev,detail:`~${spinPeakRate.toFixed(0)}°/s for ${longestSpin.toFixed(1)}s`});
   }
   r.cards.push({label:'Yaw Stability',val:yVal,desc:yDesc,status:yStat,
@@ -808,7 +813,7 @@ function analyze(msgs,filename){
 
   // ── VIBRATION (VIBE) — props/mount/dampening ──
   const vibA=msgs['VIBE']||[];
-  let vibeZD=[],maxVib=0,clipMax=0;
+  let vibeZD=[],maxVib=0,maxVibAt=null,clipMax=0;
   if(vibA.length){
     const k=Object.keys(vibA[0]);
     const vx=k.find(x=>/^VibeX$/i.test(x)),vy=k.find(x=>/^VibeY$/i.test(x)),vz=k.find(x=>/^VibeZ$/i.test(x));
@@ -816,16 +821,20 @@ function analyze(msgs,filename){
       const vxD=vibA.filter(m=>m[vx]!=null).map(m=>({x:norm(m),y:m[vx]}));
       const vyD=vibA.filter(m=>m[vy]!=null).map(m=>({x:norm(m),y:m[vy]}));
       vibeZD=vibA.filter(m=>m[vz]!=null).map(m=>({x:norm(m),y:m[vz]}));
-      const px=vxD.length?Math.max(...vxD.map(d=>d.y)):0;
-      const py=vyD.length?Math.max(...vyD.map(d=>d.y)):0;
-      const pz=vibeZD.length?Math.max(...vibeZD.map(d=>d.y)):0;
-      maxVib=Math.max(px,py,pz);
-      if(maxVib>60)r.findings.push({sev:'crit',icon:'📳',text:`<strong>Critical vibration</strong> — peak ${maxVib.toFixed(1)} m/s² (X:${px.toFixed(0)} Y:${py.toFixed(0)} Z:${pz.toFixed(0)}). Will degrade EKF position estimate. Inspect props for damage, motor mounts for looseness, FC vibration dampening.`});
-      else if(maxVib>30)r.findings.push({sev:'warn',icon:'📳',text:`<strong>Elevated vibration</strong> — peak ${maxVib.toFixed(1)} m/s² (target &lt;30). Inspect props for nicks, motor balance, FC dampening foam.`});
+      // Track peak + when it occurred (lets us tell chronic vibration from impact spike)
+      let px=0,py=0,pz=0;
+      for(const d of vxD)if(d.y>px)px=d.y;
+      for(const d of vyD)if(d.y>py)py=d.y;
+      for(const d of vibeZD)if(d.y>pz)pz=d.y;
+      for(const d of vxD)if(d.y>maxVib){maxVib=d.y;maxVibAt=d.x;}
+      for(const d of vyD)if(d.y>maxVib){maxVib=d.y;maxVibAt=d.x;}
+      for(const d of vibeZD)if(d.y>maxVib){maxVib=d.y;maxVibAt=d.x;}
+      if(maxVib>60)r.findings.push({sev:'crit',cat:'effect',t:maxVibAt,icon:'📳',text:`<strong>Critical vibration</strong> — peak ${maxVib.toFixed(1)} m/s² (X:${px.toFixed(0)} Y:${py.toFixed(0)} Z:${pz.toFixed(0)}) at T+${(maxVibAt||0).toFixed(1)}s. Will degrade EKF position estimate. Inspect props for damage, motor mounts for looseness, FC vibration dampening.`});
+      else if(maxVib>30)r.findings.push({sev:'warn',cat:'effect',t:maxVibAt,icon:'📳',text:`<strong>Elevated vibration</strong> — peak ${maxVib.toFixed(1)} m/s² at T+${(maxVibAt||0).toFixed(1)}s (target &lt;30). Inspect props for nicks, motor balance, FC dampening foam.`});
     }
     const cl=['Clip0','Clip1','Clip2'].map(c=>(vibA[vibA.length-1]||{})[c]||0);
     clipMax=Math.max(...cl);
-    if(clipMax>0)r.findings.push({sev:clipMax>1000?'crit':'warn',icon:'⚠️',text:`<strong>Accelerometer clipping</strong> — ${clipMax} clip event${clipMax>1?'s':''} on the worst IMU. Sensor saturated by extreme vibration; position/velocity estimates were unreliable while clipping was active.`});
+    if(clipMax>0)r.findings.push({sev:clipMax>1000?'crit':'warn',cat:'effect',icon:'⚠️',text:`<strong>Accelerometer clipping</strong> — ${clipMax} clip event${clipMax>1?'s':''} on the worst IMU. Sensor saturated by extreme vibration; position/velocity estimates were unreliable while clipping was active.`});
   }
   r.charts.vibe=ds(vibeZD);
   r.stats.maxVib=maxVib>0?`${maxVib.toFixed(1)} m/s²`:null;
@@ -833,18 +842,19 @@ function analyze(msgs,filename){
 
   // ── EKF VARIANCE (NKF4 / XKF4) — sensor-fusion confidence ──
   const nkf4=msgs['NKF4']||msgs['XKF4']||[];
-  let ekfVarD=[],ekfMaxV=0;
+  let ekfVarD=[],ekfMaxV=0,ekfMaxVAt=null;
   if(nkf4.length){
     const k=Object.keys(nkf4[0]);
     const vKeys=['SV','SP','SH','SM'].filter(x=>k.includes(x));
     if(vKeys.length){
       for(const m of nkf4){
         let mx=0;for(const kk of vKeys){const v=m[kk];if(v!=null&&v>mx)mx=v;}
-        if(mx>0)ekfVarD.push({x:norm(m),y:mx});
-        if(mx>ekfMaxV)ekfMaxV=mx;
+        const t=norm(m);
+        if(mx>0)ekfVarD.push({x:t,y:mx});
+        if(mx>ekfMaxV){ekfMaxV=mx;ekfMaxVAt=t;}
       }
-      if(ekfMaxV>1.0)r.findings.push({sev:'crit',icon:'🧭',text:`<strong>EKF variance critical</strong> — peak innovation ratio ${ekfMaxV.toFixed(2)} (>1.0 = filter rejected its own sensors). Often the root cause of unexplained RTL/Land or position drift. Check vibration, GPS quality, compass calibration.`});
-      else if(ekfMaxV>0.5)r.findings.push({sev:'warn',icon:'🧭',text:`<strong>EKF variance elevated</strong> — peak ratio ${ekfMaxV.toFixed(2)} (target &lt;0.5). Sensor fusion is under stress; review GPS HAcc and vibration in the same window.`});
+      if(ekfMaxV>1.0)r.findings.push({sev:'crit',cat:'effect',t:ekfMaxVAt,icon:'🧭',text:`<strong>EKF variance critical</strong> — peak innovation ratio ${ekfMaxV.toFixed(2)} at T+${(ekfMaxVAt||0).toFixed(1)}s (>1.0 = filter rejected its own sensors). Often the root cause of unexplained RTL/Land or position drift. Check vibration, GPS quality, compass calibration.`});
+      else if(ekfMaxV>0.5)r.findings.push({sev:'warn',cat:'effect',t:ekfMaxVAt,icon:'🧭',text:`<strong>EKF variance elevated</strong> — peak ratio ${ekfMaxV.toFixed(2)} at T+${(ekfMaxVAt||0).toFixed(1)}s (target &lt;0.5). Sensor fusion is under stress; review GPS HAcc and vibration in the same window.`});
     }
   }
   r.charts.ekfVar=ds(ekfVarD);
@@ -917,7 +927,7 @@ function analyze(msgs,filename){
     const name=EV_NAMES[id]||`Event ${id}`;
     const crit=EV_CRIT.has(id);
     r.events.push({t:norm(e).toFixed(1),type:name,sev:crit?'crit':'info',detail:`EV id=${id}`});
-    if(crit)r.findings.push({sev:'crit',icon:'🚨',text:`<strong>${name}</strong> — autopilot raised event id ${id} at T+${norm(e).toFixed(1)}s. This is the autopilot's own record of why something went wrong.`});
+    if(crit)r.findings.push({sev:'crit',t:norm(e),icon:'🚨',text:`<strong>${name}</strong> — autopilot raised event id ${id} at T+${norm(e).toFixed(1)}s. This is the autopilot's own record of why something went wrong.`});
   }
 
   // ── MSG TEXT — autopilot's own diagnostic strings ──
@@ -950,7 +960,7 @@ function analyze(msgs,filename){
           if(!_seenMsg.has(key)){
             _seenMsg.add(key);
             const safe=txt.replace(/[<>&]/g,'').slice(0,160);
-            r.findings.push({sev:'crit',icon:'📢',text:`<strong>${p.type}</strong> — autopilot reported "${safe}" at T+${norm(m).toFixed(1)}s.`});
+            r.findings.push({sev:'crit',t:norm(m),icon:'📢',text:`<strong>${p.type}</strong> — autopilot reported "${safe}" at T+${norm(m).toFixed(1)}s.`});
           }
         }
         break;
@@ -972,7 +982,7 @@ function analyze(msgs,filename){
       if(e>maxPosErr){maxPosErr=e;posErrAt=norm(m);posErrAxis=k.replace('PSC','');}
     }
   }
-  if(maxPosErr>3&&posErrAt!=null)r.findings.push({sev:maxPosErr>5?'crit':'warn',icon:'🎯',text:`<strong>Position tracking error</strong> — drone deviated up to ${maxPosErr.toFixed(2)}m on the ${posErrAxis} axis from commanded position at T+${posErrAt.toFixed(1)}s. For a light-show drone this is highly visible — formation pixel was off-target.`});
+  if(maxPosErr>3&&posErrAt!=null)r.findings.push({sev:maxPosErr>5?'crit':'warn',cat:'effect',t:posErrAt,icon:'🎯',text:`<strong>Position tracking error</strong> — drone deviated up to ${maxPosErr.toFixed(2)}m on the ${posErrAxis} axis from commanded position at T+${posErrAt.toFixed(1)}s. For a light-show drone this is highly visible — formation pixel was off-target.`});
   r.stats.maxPosErr=maxPosErr>0?`${maxPosErr.toFixed(2)}m`:null;
 
   // ── MODE CHANGES ──
@@ -988,7 +998,7 @@ function analyze(msgs,filename){
   const clrErrs=errA.filter(e=>(e['ECode']||0)===0);
   for(const e of actErrs){const sub=ES[e['Subsys']]||`Subsys ${e['Subsys']}`;
     r.events.push({t:norm(e).toFixed(1),type:'Error',sev:'crit',detail:`${sub} ECode:${e['ECode']}`});
-    r.findings.push({sev:'crit',icon:'⚠️',text:`<strong>System error: ${sub}</strong> — ECode ${e['ECode']} at T+${norm(e).toFixed(1)}s.`});}
+    r.findings.push({sev:'crit',cat:'effect',t:norm(e),icon:'⚠️',text:`<strong>System error: ${sub}</strong> — ECode ${e['ECode']} at T+${norm(e).toFixed(1)}s.`});}
   for(const e of clrErrs){const sub=ES[e['Subsys']]||`Subsys ${e['Subsys']}`;
     r.events.push({t:norm(e).toFixed(1),type:'Status Clear',sev:'info',detail:`${sub} cleared`});}
   r.cards.push({label:'Errors',val:actErrs.length,desc:actErrs.length?`${actErrs.length} active`:clrErrs.length?`${clrErrs.length} transitions`:'No errors',
@@ -1020,11 +1030,11 @@ function analyze(msgs,filename){
         if(runLen>longestSatRun){longestSatRun=runLen;satRunAt=satRunStart;}
       } else satRunStart=null;
     }
-    if(maxImb>400){r.findings.push({sev:'warn',icon:'🔧',text:`<strong>Motor output imbalance</strong> — PWM spread of ${maxImb.toFixed(0)} units at T+${imbAt.toFixed(1)}s. Check motor/ESC condition and propeller balance.`});
+    if(maxImb>400){r.findings.push({sev:'warn',cat:'effect',t:imbAt,icon:'🔧',text:`<strong>Motor output imbalance</strong> — PWM spread of ${maxImb.toFixed(0)} units at T+${imbAt.toFixed(1)}s. Check motor/ESC condition and propeller balance.`});
       r.events.push({t:imbAt.toFixed(1),type:'Motor Imbalance',sev:'warn',detail:`PWM spread ${maxImb.toFixed(0)} units`});}
     if(longestSatRun>1.0&&satRunAt!=null){
       const sev=longestSatRun>3?'crit':'warn';
-      r.findings.push({sev,icon:'🔥',text:`<strong>Motor saturation</strong> — all four lift motors held ≥1900 PWM for ${longestSatRun.toFixed(1)}s starting T+${satRunAt.toFixed(1)}s. Drone is overweight, climbing too aggressively, or losing thrust authority — risk of imminent altitude loss / fall-out.`});
+      r.findings.push({sev,t:satRunAt,icon:'🔥',text:`<strong>Motor saturation</strong> — all four lift motors held ≥1900 PWM for ${longestSatRun.toFixed(1)}s starting T+${satRunAt.toFixed(1)}s. Drone is overweight, climbing too aggressively, or losing thrust authority — risk of imminent altitude loss / fall-out.`});
       r.events.push({t:satRunAt.toFixed(1),type:'Motor Saturation',sev,detail:`Sustained ${longestSatRun.toFixed(1)}s at ≥1900 PWM`});
     }
   }
@@ -1039,8 +1049,32 @@ function analyze(msgs,filename){
 
   r.events.sort((a,b)=>parseFloat(a.t)-parseFloat(b.t));
 
+  // ── CASCADE DEMOTER — if there's a clear in-flight cause, demote downstream effects ──
+  // "Effect" findings (vibration peak, EKF variance, accel clipping, system errors, motor imbalance,
+  //  position tracking error) are often impact-cascade noise that fires AFTER the actual problem.
+  // When a non-effect critical finding exists, mark effect-category findings as cascade so they
+  // drop out of Primary Issues. Findings with timestamps are kept if they occurred BEFORE the root
+  // event (i.e. chronic vibration that started early in flight is the real cause, not noise).
+  {
+    const causes=r.findings.filter(f=>f.sev==='crit'&&f.cat!=='effect');
+    const causeTimes=causes.map(f=>f.t).filter(t=>t!=null);
+    const rootEventT=causeTimes.length?Math.min(...causeTimes):null;
+    if(causes.length){
+      for(const f of r.findings){
+        if(f.cat!=='effect')continue;
+        if(f.t!=null&&rootEventT!=null){
+          // Has timestamp — only demote if it occurred AFTER the root event
+          if(f.t>rootEventT+1.0)f._cascade=true;
+        }else{
+          // No timestamp (whole-flight peak) — demote since we have a clear in-flight cause
+          f._cascade=true;
+        }
+      }
+    }
+  }
+
   // ── PRIMARY CAUSE / VERDICT — pick the most explanatory single root cause ──
-  const _findCrit=pat=>r.findings.find(f=>f.sev==='crit'&&pat.test(f.text));
+  const _findCrit=pat=>r.findings.find(f=>f.sev==='crit'&&!f._cascade&&pat.test(f.text));
   let _verdict=null;
   if(_findCrit(/crash detected|^<strong>crash/i))
     _verdict='Autopilot detected a crash — flight ended unexpectedly. Look at the events around the crash time for the trigger.';
@@ -1075,7 +1109,7 @@ function analyze(msgs,filename){
     r.findings.unshift({sev:'ok',icon:'✅',text:`<strong>Flight nominal</strong> — no critical issues detected, no notable warnings raised.`,_verdict:true});
 
   // ── OVERALL ──
-  const nC=r.findings.filter(f=>f.sev==='crit'&&!f._verdict).length,nW=r.findings.filter(f=>f.sev==='warn').length;
+  const nC=r.findings.filter(f=>f.sev==='crit'&&!f._verdict&&!f._cascade).length,nW=r.findings.filter(f=>f.sev==='warn').length;
   r.cards.unshift({label:'Overall',val:nC?`${nC} Critical`:nW?`${nW} Warning${nW>1?'s':''}`:'Good',
     desc:nC?`+${nW} warnings`:nW?'No critical issues':'All checks passed',
     status:nC?'crit':nW?'warn':'ok',
@@ -1603,14 +1637,19 @@ function renderDrone(idx){
 
   <div class="shd">Primary Issues</div>
   <div class="findings">${(()=>{
-    const top=d.findings.filter(f=>f.sev==='crit'||f._verdict);
+    // Verdict + non-cascade critical findings only
+    const top=d.findings.filter(f=>(f.sev==='crit'&&!f._cascade)||f._verdict);
     return top.length?top.map(f=>`<div class="finding ${f.sev}"><span class="fi">${f.icon}</span><span class="ft">${f.text}</span></div>`).join('')
       :`<div class="finding ok"><span class="fi">✅</span><span class="ft"><strong>No critical issues detected</strong></span></div>`;
   })()}</div>
   ${(()=>{
-    const warn=d.findings.filter(f=>f.sev==='warn');
-    return warn.length?`<div class="shd" style="margin-top:14px">Other Notes</div>
-    <div class="findings">${warn.map(f=>`<div class="finding ${f.sev}"><span class="fi">${f.icon}</span><span class="ft">${f.text}</span></div>`).join('')}</div>`:'';
+    // Other Notes = cascade crits (likely impact-cascade noise) + warn-level findings
+    const cascade=d.findings.filter(f=>f.sev==='crit'&&f._cascade&&!f._verdict);
+    const warn=d.findings.filter(f=>f.sev==='warn'&&!f._verdict);
+    const other=[...cascade,...warn];
+    if(!other.length)return'';
+    const cascadeNote=cascade.length?'<div style="font-size:11px;color:var(--dim);margin:-4px 0 6px;font-style:italic">Items below the line likely fired as a downstream consequence of the primary issue above.</div>':'';
+    return`<div class="shd" style="margin-top:14px">Other Notes</div>${cascadeNote}<div class="findings">${other.map(f=>`<div class="finding ${f.sev}${f._cascade?' cascade':''}"><span class="fi">${f.icon}</span><span class="ft">${f.text}</span></div>`).join('')}</div>`;
   })()}
 
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:9px;">
@@ -1638,12 +1677,12 @@ function renderDrone(idx){
         <span class="exp-count">${Object.keys(d.msgTypes).length} types · ${Object.values(d.msgTypes).reduce((s,t)=>s+t.count,0).toLocaleString()} messages</span>
       </div>
       <div class="exp-search-wrap">
-        <input type="text" id="exp-search" placeholder="Search fields — e.g. height, speed, battery…" oninput="filterExplorer(this.value,${idx})">
+        <input type="text" id="exp-search" placeholder="Search — e.g. battery, RTK, vibration" oninput="filterExplorer(this.value,${idx})">
       </div>
     </div>
     <div class="exp-body">
-      <div class="exp-list" id="expg">${msgTypesHtml}</div>
-      <div class="exp-charts" id="excg"><div class="exp-placeholder">Click any field tag to chart it<br>Then click <strong>⊕ Pin to top</strong> on the chart to add it to the Telemetry section above</div></div>
+      <div class="exp-list" id="expg">${msgTypesHtml||'<div class="exp-empty">No message types parsed from this log.<br>The file may be too short (failed pre-arm), corrupted, or not an ArduPilot binary log.</div>'}</div>
+      <div class="exp-charts" id="excg"><div class="exp-placeholder"><p>Click any field on the left to chart it.</p><p>Then hit <strong>⊕ Pin to top</strong> on the chart to add it to the Telemetry section above.</p></div></div>
     </div>
   </div>
   `;
